@@ -1,0 +1,63 @@
+on: [push, pull_request]
+
+name: R-CMD-check
+
+jobs:
+  R-CMD-check:
+    runs-on: ${{ matrix.config.os }}
+
+    name: ${{ matrix.config.os }} (${{ matrix.config.r }} ${{ matrix.config.dplyr_version }})
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+        - { os: ubuntu-16.04, r: '3.2', dplyr_version: 'cran dplyr'}
+        - { os: ubuntu-16.04, r: '3.3', dplyr_version: 'cran dplyr'}
+        - { os: ubuntu-16.04, r: '3.4', dplyr_version: 'cran dplyr'}
+        - { os: ubuntu-16.04, r: '3.5', dplyr_version: 'cran dplyr'}
+        - { os: ubuntu-16.04, r: '3.6', dplyr_version: 'cran dplyr'}
+        - { os: ubuntu-16.04, r: '3.2', dplyr_version: 'github dplyr'}
+        - { os: ubuntu-16.04, r: '3.3', dplyr_version: 'github dplyr'}
+        - { os: ubuntu-16.04, r: '3.4', dplyr_version: 'github dplyr'}
+        - { os: ubuntu-16.04, r: '3.5', dplyr_version: 'github dplyr'}
+        - { os: ubuntu-16.04, r: '3.6', dplyr_version: 'github dplyr'}
+
+    services:
+      postgres:
+        image: postgres
+        ports:
+        - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: test_db
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+
+    env:
+      R_REMOTES_NO_ERRORS_FROM_WARNINGS: true
+      _R_CHECK_FORCE_SUGGESTS_: false
+      CRAN: "https://demo.rstudiopm.com/all/__linux__/xenial/latest"
+
+    steps:
+      - uses: actions/checkout@v1
+      - uses: r-lib/actions/setup-r@master
+      - uses: r-lib/actions/setup-pandoc@master
+
+      - name: Install system dependencies
+        env:
+          RHUB_PLATFORM: linux-x86_64-ubuntu-gcc
+        run: |
+          Rscript -e "install.packages('remotes')" -e "remotes::install_github('r-hub/sysreqs')"
+          sysreqs=$(Rscript -e "cat(sysreqs::sysreq_commands('DESCRIPTION'))")
+          sudo -s eval "$sysreqs"
+
+      - name: Install dependencies
+        run: Rscript -e "install.packages('rcmdcheck')" -e "remotes::install_deps(dependencies = TRUE)"
+
+      - name: Install github dplyr
+        if: matrix.config.dplyr_version == 'github dplyr'
+        run: Rscript -e "install.packages('remotes')" -e "remotes::install_github('tidyverse/dplyr')"
+
+      - name: Check
+        run: Rscript -e "rcmdcheck::rcmdcheck(args = '--no-manual', error_on = 'error')"
